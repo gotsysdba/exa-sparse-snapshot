@@ -7,7 +7,7 @@ Main benefits over other solutions include:
 * Utilises existing, familiar Oracle technologies (Dataguard/Goldengate)
 * No additional network requirements
 * No network latency impacting performance (I/O bus is not Ethernet)
-* No 3rd-Parth black-box appliances
+* No 3rd-Party black-box appliances
 * Offers full end-to-end performance and high availability (HA) testing
 
 More information about Exadata Snapshots can be found in the [Official Documentation](https://docs.oracle.com/en/engineered-systems/exadata-database-machine/sagug/exadata-storage-server-snapshots.html#GUID-78F67DD0-93C8-4944-A8F0-900D910A06A0)
