@@ -48,7 +48,8 @@ This process uses Oracle Dataguard to create multiple point-in-time Sparse Snaps
 A Physical Standby must exist as this will become the "Original Test Master".  The Standby database should be properly registered with CRS as a PHYSICAL_STANDBY, and in the Dataguard Broker configuration using its DB_UNIQUE_NAME.
 
 #### **Create the First Sparse TestMaster**
-Using the full_sparse_tm.ksh code, specify the DB_NAME of the Standby, the directory to store helper files, and the ASM Sparse Diskgroup name, for example
+Using the full_sparse_tm.ksh code, specify the DB_NAME of the Standby, the directory to store helper files, and the ASM Sparse Diskgroup name, for example:
+
 ```full_sparse_tm.ksh -a TMORIGINAL -b /u01/app/oracle/sparse -c +SPRC1```
 
 The above will take the TMORIGINAL standby database, create helper files post-fixed with DDMMYYYYHHMI in the /u01/app/oracle/sparse/TMORIGINAL directory and create the First Sparse TestMaster.
@@ -59,6 +60,7 @@ Repeat the same command for each additional Sparse TestMaster created over time.
 > **WARNING**: This is incomplete pseudo-code and _WILL NOT WORK_.  Use as a reference only.
 
 Using the snapshot_db.ksh code, specify the DB_NAME of the Standby, the directory where the helper files are stored, the Date in DDMMYYYYHHMI format, and the new SnapshotDB name, for example:
+
 ```snapshot.ksh -a TMORIGINAL -b /u01/app/oracle/sparse -c 010920121754 -d SPARSE1```
 
 The above will create a new SnapshotDB from the 010920121754 Sparse TestMaster.
