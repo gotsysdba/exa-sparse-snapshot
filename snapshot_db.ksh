@@ -24,12 +24,14 @@ function create_pfile {
 	typeset -r _PRIMARY=$4
 	typeset -r _RC=0
 
-
 	cat <<- EOF > ${_PFILE}
 		control_files='${_CONTROL}'
 		db_name=${_PRIMARY}
 		db_unique_name=${_SNAP}
 		sga_target=5g
+		enable_pluggable_database=true
+		tde_configuration='keystore_configuration=FILE'
+		wallet_root='/var/opt/oracle/dbaas_acfs/???????????????????/wallet_root'
 	EOF
 
 	return ${_RC}
@@ -115,14 +117,57 @@ if [[ -z ${PRIMARY} ]] || [[ -z ${DB_HOME} ]]; then
 	exit 1
 fi
 
-typeset -r PFILE="${WORKING_DIR}/pfile_${MYSNAPSHOT}.ctl"
-create_pfile "${PFILE}" "${CONTROL_FILE}" "${MYSNAPSHOT}" "${PRIMARY}" 
+# Create a temporary pfile to generate the controlfile
+typeset -r TMP_PFILE="${WORKING_DIR}/pfile_${MYSNAPSHOT}.ctl"
+create_pfile "${TMP_PFILE}" "${CONTROL_FILE}" "${MYSNAPSHOT}" "${PRIMARY}"
 
+# Modify the rename script to create sparse copies
+typeset -r RENAME_FILE="${WORKING_DIR}/df_rename_${MYDATE}.sql"
+sed -i "s|${MYDATE}');\$|${MYSNAPSHOT}');|" ${RENAME_FILE}
+
+# Startup with the temp pfile
 export ORACLE_SID=${MYSNAPSHOT}
 export ORACLE_HOME=${DB_HOME}
-print -- "Running SQL> startup mount pfile='${PFILE}'"
-run_sql "startup mount pfile='${PFILE}'"
+print -- "Running SQL> startup mount pfile='${TMP_PFILE}'"
+run_sql "startup mount pfile='${TMP_PFILE}'"
 
+# Create a controlfile to trace and copy locally
+typeset -r CP_TRACE="${WORKING_DIR}/cp_trace.sh"
+typeset -r CP_SQL="select 'cp '||value||' ${WORKING_DIR}/control.sql' 
+					   FROM v\$diag_info WHERE name = 'Default Trace File';
+					ALTER DATABASE BACKUP CONTROLFILE TO TRACE;"
+run_sql "${CP_SQL}" "${CP_TRACE}"
+sh ${CP_TRACE}
+
+# Shutdown
+print -- "Running SQL> shutdown immediate"
+run_sql "shutdown immediate"
+
+# Convert the TM Pfile to the Snapshot PFILE
+$(sed -e "s|${PRIMARY}|${MYSNAPSHOT}|" \
+	  -e "s|${MYTESTMASTER}|${MYSNAPSHOT}|" \
+	  -e "s|control_files|<ASM_PATH>/control_${MYSNAPSHOT}.f|" \
+	  -e "s|dg_broker|<DELETE>|" \
+	  -e "s|fal_server|<DELETE>|" \
+	  -e "s|wallet_root|<Keep with DB_UNQUIQE OF Orig TM>|" \
+	  -e "s|log_archive|<DELETE>|" < ${ETC_DIR}/${INPUT_TEMPL} > ${_PROP_SPEC_FILE})
+
+# Convert the Create Controlfile Trace
+sed -i '/Set \#2/,$!d' original.trc
+sed -i /^--/d original.trc
+sed -i '/CHARACTER SET.*/q' original.trc
+sed -i 's/ARCHIVELOG/NOARCHIVELOG/' original.trc
+sed -e 's/-- Files in read-only tablespaces are now named.\(.*\)String/\1/'
+sed -e 's/ONLINELOG and change file name to sparse'
+
+# Update the rename
+
+export ORACLE_SID
+startup nomout pfile=<NEWPFILE>
+@create_control.sql
+@df_rename -- Some errors due to MISSING files
+ALTER DATABASE OPEN RESETLOGS;
+ALTER PLUGGABLE DATABASE ALL OPEN;
 
 
 print -- "Exiting: ${RC}"
