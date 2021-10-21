@@ -37,6 +37,11 @@ alter diskgroup DATAC1 set attribute 'ACCESS_CONTROL.ENABLED'='TRUE';
 alter diskgroup DATAC1 add user 'oracle';
 alter diskgroup SPRC1 set attribute 'ACCESS_CONTROL.ENABLED'='TRUE';
 alter diskgroup SPRC1 add user 'oracle';
+
+REM Verify 
+select g.name, u.os_name 
+  from v$asm_user u, v$asm_diskgroup g 
+ where g.group_number = u.group_number;
 ```
 
 ## CDB/non-CDB Point-in-Time Snapshots
