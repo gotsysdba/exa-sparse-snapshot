@@ -16,7 +16,7 @@ The "TestMaster" is an Oracle DB (incl. PDBs) whose instance(s) have no Write ac
 When replication technology, e.g. Dataguard or Goldengate, is used, part of the conversion process includes stopping, or redirecting, replication to prevent unintented disruption to the source DB.
 
 ## Observations and Considerations
-* Controlfiles and Online REDO are always FULL (not Sparse Copies).  Keep this in mind in regards to diskspace, especially around Online REDO sizes.
+* Controlfiles, Online REDO, and Temporary Tablespaces are always FULL (not Sparse Copies).  Keep this in mind in regards to diskspace.
 * The Offical Documentation demonstrates new ASM directories in the SPARSE Diskgroup for each SnapshotDB.  This is not required as datafiles can be uniquely named during the sparse clones and placed in a single ASM directory.  Creating new directories will require interaction with ASM to both create the new directory and grant ACL access.  
 * The strategy taken in regards to ASM directories may simplify or complicate cleanup activities depending on the requirements.
 * For Point-In-Time Scenarios, you must maintain the files generated during each Sparse TestMaster creation in order to create SnapshotDBs on older TestMaster files.  This is required as new Production (Primary) datafiles/PDBs may be replicated to the active Sparse TestMaster.

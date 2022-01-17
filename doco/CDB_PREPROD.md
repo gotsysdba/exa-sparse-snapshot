@@ -1,5 +1,6 @@
 # CDB Pre-Production Database
 Quickly create a Pre-Production Sparse Snapshot database for testing code releases prior to deployment to Production.
+![](/images/CDBSparseClone.png)
 
 ## Prerequisites
 An existing Dataguard Physical Standby Database:
