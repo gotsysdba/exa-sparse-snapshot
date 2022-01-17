@@ -1,0 +1,157 @@
+typeset -i  RC=0
+typeset -r  IFS_ORIG=$IFS
+typeset -r  HOST_FULL=$(hostname)
+typeset -r  HOST_SHRT=$(hostname -s)
+typeset -ru NOW=$(date +%d%h%y%H%M)
+
+function e_print {
+	typeset -ru _STAT=$1
+	typeset -r  _MSG=$2
+	shift ${#*}
+	typeset -ru _NOW=$(date +%d-%h-%yT%H:%M:%S)
+	printf "%6s [${_NOW}]: %s\n" "${_STAT}" "${_MSG}"
+}
+
+function e_fatal {
+	typeset -r _MSG=$1
+	shift ${#*}
+
+	e_print "FATAL" "${_MSG}"
+	exit 1
+}
+
+#-- Export CRS Config of database
+function e_exp_crs_configs {
+	typeset -r _CRS_HOME=$1
+	typeset -l _DB_NAME=$2
+	typeset -i _RETCODE=0
+
+	if [[ -x ${_CRS_HOME}/bin/crsctl ]]; then
+		${_CRS_HOME}/bin/crsctl status resource -f -w "((TYPE = ora.database.type) AND (NAME = ora.${_DB_NAME}.db)) AND (LAST_SERVER = ${HOST_SHRT})" |
+		while IFS="=" read _KEY _VALUE; do
+			_KEY="CRS_${_KEY}"
+			if [[ ! ${_KEY} =~ "@" ]]; then
+				unset "${_KEY}" 
+			fi
+			if [[ -n ${_VALUE} ]]; then
+				# For RAC's consolidate node based keys into a single cluster one
+				if [[ ${_KEY} =~ "@" ]]; then
+					_KEY="${_KEY%@*}_CLUST"
+				fi
+				# If an existing value has been assigned, keep the old value
+				typeset -n _CURR_VAL=$(echo ${_KEY})
+				if [[ -n ${_CURR_VAL} ]]; then
+					# Export the VARS out as GLOBALS so can be reused
+					if [[ ${_CURR_VAL//${_VALUE}/} == ${_CURR_VAL} ]]; then
+						export ${_KEY}="${_VALUE} ${_CURR_VAL}"
+					fi
+				else
+					# avoid spaces
+					export ${_KEY}="${_VALUE}"
+				fi
+			fi
+			
+		done
+		# At a min, CRS will have a name for the resource, if its not there, then no CRS entry
+		if [[ -z ${CRS_NAME} ]]; then
+			e_fatal "Unable to CRS Entry for ${_DB_NAME}"
+		fi
+	else
+		e_fatal "Unable to execute ${_CRS_HOME}/bin/crsctl"
+	fi
+
+	return ${_RETCODE}
+}
+
+#-- Get the CRS Home
+function e_get_crs_home {
+	typeset -n _CRS_HOME_NR=$1
+	typeset -i _RC=0
+	shift ${#*}
+
+	if [[ -r "/etc/oracle/olr.loc" ]]; then
+		typeset -r _OLR_OUT=$(grep -e "^crs_home.*" /etc/oracle/olr.loc)
+		_CRS_HOME_NR=${_OLR_OUT##*=}
+	else
+		e_fatal "Unable to find /etc/oracle/olr.loc or unable to read"
+	fi
+	
+	if [[ -d ${_CRS_HOME_NR} ]]; then
+		typeset -i _CRS_PROC=$(ps -e axo args|grep -c "^${_CRS_HOME_NR}/bin/ohasd.bin*")
+		if (( ${_CRS_PROC} == 0 )); then
+			e_fatal "CRS Installed in ${_CRS_HOME_NR}; but is not running"
+		else
+			e_print "INFO" "CRS Installed and Running at ${_CRS_HOME_NR}"
+		fi
+	else
+		e_print "WARN" "/etc/oracle/olr.loc points to a non-existant location, manual cleanup needed"
+		e_fatal "Expected CRS_HOME: ${_CRS_HOME_NR} no longer exists.  Unable to continue"
+	fi	
+	return ${_RC}
+}
+
+function e_run_dgmgrl {
+    typeset -n _DGMGRL_OUT=$1
+	typeset -r _AUTHN=$2
+    typeset -r _CMD=$3
+    typeset -i _RC=0
+
+    e_print "INFO" "Running: dgmgrl -silent ${_AUTHN} \"${_CMD}\""
+    _DGMGRL_OUT=$($ORACLE_HOME/bin/dgmgrl -silent ${_AUTHN} "${_CMD}")
+    _RC=$?
+    IFS=${IFS##?}
+    for _OUTPUT in ${_DGMGRL_OUT}; do
+        if [[ ${_OUTPUT} =~ ORA-01017 ]]; then
+            break
+        fi
+        e_print "DGMGRL" "${_OUTPUT}"
+    done
+    IFS=${IFS_ORIG}
+
+    return ${_RC}
+}
+
+
+function e_run_sql {
+	typeset -r _SQL=$1
+	typeset -r _SPOOL=${2:-OFF}
+	typeset -i _RC=0
+	shift ${#*}
+
+	if [[ ${_SPOOL} != "OFF" ]]; then
+		e_print "INFO" "Spooling to ${_SPOOL}"
+		${ORACLE_HOME}/bin/sqlplus -s / as sysdba <<-EOSQL1 >/dev/null 2>&1
+			set newpage 0 linesize 999 pagesize 0 feedback off heading off
+			set echo off space 0 tab off trimspool on
+			whenever sqlerror exit 1
+			spool ${_SPOOL}
+			${_SQL}
+		EOSQL1
+		_RC=$?
+	else
+		e_print "INFO" "Running SQL> ${_SQL}"
+		${ORACLE_HOME}/bin/sqlplus -s / as sysdba <<-EOSQL2
+			set newpage 0 linesize 999 pagesize 0 feedback off heading off
+			set echo off space 0 tab off trimspool on
+			whenever sqlerror exit 1
+			${_SQL}
+		EOSQL2
+		_RC=$?
+	fi
+
+	return ${_RC}
+}
+
+function e_get_sql_output {
+	typeset -n _SQL_OUT=$1
+	typeset -r _SQL=$2
+	typeset -i _RC=0
+	shift ${#*}
+
+	_SQL_OUT=$(${ORACLE_HOME}/bin/sqlplus -s / as sysdba <<-EOSQL
+		set head off wrap off linesize 1000 pagesize 0
+		${_SQL}
+	EOSQL)
+
+	return ${_RC}
+}
